@@ -2,12 +2,13 @@
 
 mod implementations;
 
+use core::panic;
 use implementations::*;
 use itertools::Itertools;
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, HashMap, btree_map::Range},
     fmt::Debug,
-    ops::{Add, Sub},
+    ops::{Add, RangeInclusive, Sub},
     string::{self, String},
 };
 
@@ -21,47 +22,97 @@ pub const EXAMPLE: &str = // esempio modificato
 .....+.58.
 ..592.....
 ......755.
-...$.*#@..
+...$.*....
 .664.598..";
 
+fn find_element(
+    row: &[Element],
+    other_pos: Position,
+    x: RangeInclusive<usize>,
+) -> Option<&Element> {
+    row.iter().find(|el| {
+        {
+            matches!(el, Element::Number {x: inc_x, ..} if {
+                inc_x.clone()
+                .any(|inc_x| x.clone().any(|x| inc_x == x+1 || inc_x == x-1))
+            })
+        }
+    })
+}
 fn main() {
     let parsed_input = EXAMPLE
         .lines()
         .map(parse_line_p1)
-        //.inspect(|x| println!("{x:?}"))
         .enumerate() // will be y
-        .flat_map(parse_line_p2)
-        .collect::<BTreeMap<_, _>>();
+        .map(parse_line_p2)
+        //.inspect(|x| println!("{x:?}"))
+        .collect::<Vec<_>>();
+    let row_len = parsed_input[0].len();
 
-    let symbols = parsed_input
+    let mut total_gear_ratio = 0;
+    parsed_input
         .iter()
-        .filter(|(_, el)| matches!(el, Element::Symbol { .. }));
-
-    let mut total = 0;
-
-    symbols.for_each(|(sym_pos, sym)| {
-        let Element::Symbol { str_repr, len } = sym else {
-            panic!()
-        };
-
-        let adj_prod = ADJACENT_MAT
-            .iter()
-            .map(|offset| {
-                let adj_pos = sym_pos + offset;
-                if let Some(Element::Number { digits, len: num_len }) = parsed_input.get(&adj_pos)
-                    && let Element::Symbol { str_repr, len: sym_len } = sym
-                    && str_repr == "*"
-                {
-                    println!("symbol: {str_repr:?} adj to num: {digits}");
-                    digits
-                } else {
-                    &1
-                }
-            })
-            .product::<usize>();
-        total += adj_prod;
-    });
-    dbg!(total);
+        .flatten()
+        .enumerate()
+        .for_each(|(nth, element)| {
+            if let Element::Symbol { str_repr, x } = element
+                && str_repr.contains('*')
+            {
+                let row_index = nth / row_len;
+                //dbg!(&str_repr, col_number);
+                let sym_len = x.try_len().unwrap();
+                match sym_len {
+                    1 => {
+                        let res = ADJACENT_MAT
+                            .into_iter()
+                            .filter_map(|offset| {
+                                let other_pos = (&Position {
+                                    x: x.clone(),
+                                    y: row_index,
+                                } + &offset);
+                                let sym_pos = Position {
+                                    x: x.clone(),
+                                    y: row_index,
+                                };
+                                match find_element(
+                                    &parsed_input[other_pos.y],
+                                    other_pos.clone(),
+                                    x.clone(),
+                                ) {
+                                    Some(number) => Some((
+                                        number,
+                                        sym_pos.clone().min_distances(other_pos),
+                                        str_repr,
+                                        sym_pos.y,
+                                    )),
+                                    None => None,
+                                }
+                            })
+                            // .inspect(|(num, distance, sym_str, sym_y)| {
+                            //     println!(
+                            //         "{num:?} distance {sym_str} at ({x:?}, {sym_y}): {distance} "
+                            //     )
+                            // })
+                            .filter(|tup| tup.1 <= 1.0)
+                            .duplicates_by(|(num, distance, sym_str, sym_y)|{
+                                *num
+                            })
+                            .map(|tup| match tup.0{
+                                Element::Number { digits, .. } => digits,
+                                _ => unimplemented!()
+                            }).collect_vec();
+                        if res.len() == 2{
+                            //println!("{res:?}");
+                            total_gear_ratio += res.into_iter().product::<usize>()
+                        }
+                    }
+                    _ => {
+                        unimplemented!("adjacent Multi symbol not handled")
+                    }
+                };
+            };
+        });
+        println!("Solution: {}", total_gear_ratio);
 }
 
 type FirstParse = Vec<(usize, String, CharClass)>;
@@ -74,36 +125,48 @@ fn parse_line_p1(s: &str) -> Vec<(usize, String, CharClass)> {
         .map(|(x_coor, (group_type, group))| (x_coor, group.collect::<String>(), group_type))
         .collect_vec()
 }
-fn parse_line_p2(first_parse: (usize, FirstParse)) -> Vec<(Position, Element)> {
+fn parse_line_p2(first_parse: (usize, FirstParse)) -> Vec<Element> {
     let y = first_parse.0;
-
+    let mut x_counter = 0;
     first_parse
         .1
         .into_iter()
-        .map(|(el_num, str_repr, group_type)| {
-            let (x, element) = match group_type {
-                CharClass::Digits => {
-                    let len = str_repr.len();
-                    let digits = str_repr.parse::<usize>().unwrap_or_else(|_| {
-                        panic!("Expected group type: Digits for str_repr: {}", str_repr)
-                    });
-                    (el_num, Element::Number { digits, len })
+        .map(|(el_num, str_repr, group_type)| match group_type {
+            CharClass::Digits => {
+                let len = str_repr.len();
+                let digits = str_repr.parse::<usize>().unwrap_or_else(|_| {
+                    panic!("Expected group type: Digits for str_repr: {}", str_repr)
+                });
+                let len = str_repr.len();
+                let x_min = x_counter;
+                x_counter += len;
+                let x_max = x_counter;
+                Element::Number {
+                    digits,
+                    x: x_min..=(x_max - 1),
                 }
-                CharClass::Symbols => {
-                    let len = str_repr.len();
-                    (el_num, Element::Symbol { len, str_repr })
-                }
-                CharClass::Dots => {
-                    let len = str_repr.len();
-                    (el_num, Element::Points { len })
-                }
-            };
+            }
+            CharClass::Symbols => {
+                let len = str_repr.len();
+                let x_min = x_counter;
+                x_counter += len;
+                let x_max = x_counter;
 
-            (Position { x, y }, element)
+                Element::Symbol {
+                    x: x_min..=(x_max - 1),
+                    str_repr,
+                }
+            }
+            CharClass::Dots => {
+                let len = str_repr.len();
+                let x_min = x_counter;
+                x_counter += len;
+                let x_max = x_counter;
+
+                Element::Points {
+                    x: x_min..=(x_max - 1),
+                }
+            }
         })
         .collect::<Vec<_>>()
-}
-
-fn test() {
-    dbg!(&(Position { x: 1, y: 1 }) + &ADJACENT_MAT[6]);
 }
