@@ -1,4 +1,6 @@
-use std::ops::*;
+use std::{fs::File, io::Read, ops::*};
+
+use itertools::Itertools;
 
 #[cfg(test)]
 mod tests {
@@ -60,7 +62,7 @@ impl Add<&Offset> for &Position {
         let x_max = x_max.checked_add_signed(rhs.x).unwrap();
 
         let x = x_min..=x_max;
-        let y = self.y.checked_add_signed(rhs.y).unwrap();
+        let y = self.y.checked_add_signed(rhs.y).unwrap_or(0);
         Position { x, y }
     }
 }
@@ -78,6 +80,13 @@ pub fn classify_char(c: &char) -> CharClass {
         '0'..='9' => CharClass::Digits,
         _ => CharClass::Symbols,
     }
+}
+pub fn load_input() -> String{
+    let mut fs = File::open("input.txt").unwrap();
+    let mut input = String::new();
+    fs.read_to_string(&mut input).unwrap();
+    println!("numero di linee {}",&input);
+    input
 }
 
 #[derive(Debug, PartialEq, Eq, Hash)]

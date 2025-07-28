@@ -14,7 +14,7 @@ use std::{
 
 pub const EXAMPLE: &str = // esempio modificato
     "\
-467..114..  
+467..114..
 ...*......
 ..35..633.
 ......#&..
@@ -40,7 +40,7 @@ fn find_element(
     })
 }
 fn main() {
-    let parsed_input = EXAMPLE
+    let parsed_input = load_input()
         .lines()
         .map(parse_line_p1)
         .enumerate() // will be y
@@ -48,8 +48,9 @@ fn main() {
         //.inspect(|x| println!("{x:?}"))
         .collect::<Vec<_>>();
     let row_len = parsed_input[0].len();
+    let col_len = parsed_input.len();
 
-    let mut total_gear_ratio = 0;
+    let mut total_gear_ratio: u64 = 0;
     parsed_input
         .iter()
         .flatten()
@@ -58,18 +59,28 @@ fn main() {
             if let Element::Symbol { str_repr, x } = element
                 && str_repr.contains('*')
             {
-                let row_index = nth / row_len;
+                let mut row_index = nth / row_len;
+                
+                let adj_mat = if row_len == row_index{
+                    ADJACENT_MAT.iter().filter(|offset| offset.y != 1).collect_vec()
+                } else{
+                    ADJACENT_MAT.iter().collect_vec()
+                };
+                //println!("row_index = {nth} / {row_len} = {row_index}");
                 //dbg!(&str_repr, col_number);
                 let sym_len = x.try_len().unwrap();
                 match sym_len {
                     1 => {
-                        let res = ADJACENT_MAT
+                        let res = adj_mat
                             .into_iter()
                             .filter_map(|offset| {
-                                let other_pos = (&Position {
+                                let mut other_pos = (&Position {
                                     x: x.clone(),
                                     y: row_index,
                                 } + &offset);
+                                if other_pos.y > 139{
+                                    other_pos.y = 139;
+                                }
                                 let sym_pos = Position {
                                     x: x.clone(),
                                     y: row_index,
@@ -88,22 +99,22 @@ fn main() {
                                     None => None,
                                 }
                             })
-                            // .inspect(|(num, distance, sym_str, sym_y)| {
-                            //     println!(
-                            //         "{num:?} distance {sym_str} at ({x:?}, {sym_y}): {distance} "
-                            //     )
-                            // })
-                            .filter(|tup| tup.1 <= 1.0)
-                            .duplicates_by(|(num, distance, sym_str, sym_y)|{
-                                *num
+                            .filter(|tup| tup.1 <= 1.5)
+                            .unique_by(|(num, distance, sym_str, sym_y)|{
+                                (*num, *sym_y)
+                            })
+                            .inspect(|(num, distance, sym_str, sym_y)| {
+                                println!(
+                                    "{num:?} distance {sym_str} at ({x:?}, {sym_y}): {distance} "
+                                )
                             })
                             .map(|tup| match tup.0{
-                                Element::Number { digits, .. } => digits,
+                                Element::Number { digits, .. } => u64::try_from(*digits).unwrap(),
                                 _ => unimplemented!()
                             }).collect_vec();
                         if res.len() == 2{
                             //println!("{res:?}");
-                            total_gear_ratio += res.into_iter().product::<usize>()
+                            total_gear_ratio += res.into_iter().product::<u64>()
                         }
                     }
                     _ => {
